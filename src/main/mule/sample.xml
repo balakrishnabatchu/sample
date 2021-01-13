@@ -1,0 +1,367 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp" xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:json-logger="http://www.mulesoft.org/schema/mule/json-logger" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/json-logger http://www.mulesoft.org/schema/mule/json-logger/current/mule-json-logger.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd">
+	  <flow name="post-documents-materialsFlow" doc:id="e5864ba9-1907-465d-8db2-390ac0214caa" >
+		<json-logger:logger doc:name="Post documents Materials Flow Started Logger" doc:id="45b47a7e-dbf2-4f8b-b0f3-b80d5de552df" config-ref="JsonLoggerConfig" message="Post documents Materials Flow Started &amp; size Of Data">
+			<json-logger:content ><![CDATA[#["Size of Data " ++ if(payload.data != null) sizeOf(payload.data) else 0]]]></json-logger:content>
+		</json-logger:logger>
+		<ee:transform doc:name="GroupBy specific to  CountryCode" doc:id="c2ae2c3e-b573-4bdc-aa27-0ca87ae81f98">
+				<ee:message>
+				<ee:set-payload ><![CDATA[%dw 2.0
+var sample = payload.data default [] map ( payload1 , indexOfDatum ) -> {
+	Data: payload1.document_country__vr.data  map ( payload2 , indexOfDatum ) -> {
+		name__v: payload2.name__v,
+		abbreviation__c: payload2.abbreviation__c,
+		reqPayload: payload1
+	}	
+	 }
+var reqflatten = flatten(sample.*Data map (item, index) -> item)	 
+output application/json
+---
+(reqflatten groupBy (item) -> item.abbreviation__c) pluck $]]></ee:set-payload>
+				</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="success" ><![CDATA[0]]></ee:set-variable>
+				<ee:set-variable variableName="count" ><![CDATA[0]]></ee:set-variable>
+				<ee:set-variable variableName="forEachError" ><![CDATA[[]]]></ee:set-variable>
+				<ee:set-variable variableName="errorCountry" ><![CDATA[%dw 2.0
+output application/json
+---
+[]]]></ee:set-variable>
+				<ee:set-variable variableName="validCountryCode" ><![CDATA[%dw 2.0
+output application/json
+---
+p('country.code')]]></ee:set-variable>
+				<ee:set-variable variableName="failure" ><![CDATA[0]]></ee:set-variable>
+			
+
+</ee:variables>
+			</ee:transform>
+		<foreach doc:name="For Each Country Specific Metadata" doc:id="abeb81f3-7e3a-4d08-b6cf-d41376e1e3c1" collection="#[payload]">
+			<json-logger:logger doc:name="ForEach Payload" doc:id="e11b584d-6b24-46e7-813c-5c875243b80f" config-ref="JsonLoggerConfig" message="Payload based on CountryCode" tracePoint="BEFORE_TRANSFORM"/>
+			<ee:transform doc:name="Mapping Promomats data" doc:id="8c2195a5-af35-4456-9f1d-5c8aed542b56" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+fun replaceValue(Dvalue) = if( Dvalue != null) ( (( Dvalue replace "\n" with(" ")) replace "\"" with("'")) replace "/'" with ("'")) else null
+fun nullSizeJoin(arraylist) = if(arraylist != null )(if(sizeOf(arraylist)>0)( (arraylist) joinBy "|") else null ) else null
+output application/json
+---
+if(payload.document_country__vr.name__v=="ES")
+	(
+	payload.reqPayload map (payload1, index) -> {
+	"Country" : payload.name__v[0],
+	"Product" : if( sizeOf(payload1.document_product__vr.data.name__v ) != 0 ) payload1.document_product__vr.data.name__v joinBy "|" else null,
+	"Molecule" : if( (payload1.document_molecule__cr.data.name__v) != null ) payload1.document_molecule__cr.data.name__v joinBy "|" else ( if(payload1.document_product__vr.data."molecule__cr.name__v" != null )payload1.document_product__vr.data."molecule__cr.name__v" joinBy "|" else null),
+	"RO/RG Number" : if( payload1.document_ro_number__cr.data.name__v != null ) payload1.document_ro_number__cr.data.name__v joinBy "|" else (if (payload1.document_molecule__cr.data."ro_number__cr.name__v" != null) payload1.document_molecule__cr.data."ro_number__cr.name__v" joinBy "|" else (if(payload1.document_product__vr.data."ro_number__cr.name__v" != null) payload1.document_product__vr.data."ro_number__cr.name__v" joinBy "|"  else null)),
+	"Indication" : if(payload1.document_indication__cr.data.name__v != null )(if( sizeOf(payload1.document_indication__cr.data.name__v)> 0 ) (payload1.document_indication__cr.data.name__v joinBy "|") else null) else null,
+	"Scientific Area" :  if(payload1.document_scientific_area__cr.data.name__v != null ) (if( sizeOf(payload1.document_scientific_area__cr.data.name__v ) != 0 ) payload1.document_scientific_area__cr.data.name__v joinBy "|" else null) else null,
+	"Name" : replaceValue(payload1.name__v ),
+	"Document Number" : payload1.document_number__v,
+	"Version Number" : if(payload1.major_version_number__v != null and payload1.minor_version_number__v != null ) payload1.major_version_number__v ++ "." ++ payload1.minor_version_number__v else null,
+	"Material Intent" :if(payload1.material_intent__c != null ) (if( sizeOf( payload1.material_intent__c) != 0 )  payload1.material_intent__c joinBy "|" else null) else null,
+	"Category" : if(payload1.material_category__c != null )(if( sizeOf(payload1.material_category__c) != 0 ) payload1.material_category__c joinBy "|" else null) else null,
+	"Status" : payload1.status__v,
+	"Description" : replaceValue(payload1.title__v) ,
+	"Approved for distribution date" : payload1.approved_for_distribution_date__c,
+	"Expiration date" : payload1.expiration_date__c,
+	"Print Collateral" : payload1.print_collateral__c,
+	"Legacy System ID" : replaceValue(payload1.legacy_system_id1__c),
+	"Reps Positive list" : payload1.reps_positive_liste__c,
+	"Reps Positive list category" : nullSizeJoin(payload1.liste_positive_categorie__c),
+	"Team" :  nullSizeJoin(payload1.team__c),
+	"Warehouse Storage" : nullSizeJoin(payload1.warehouse_storage__c),
+	"Units per pack" :  payload1.units_per_pack__c,
+	"Minimal order (units)" :  payload1.minimal_order_units__c,
+	"Maximum order (units)" :  payload1.maximum_order_units__c,
+	"Price per unit" : payload1.price_per_unit__c,
+	"Warning flag" :  payload1.warning_flag__c,
+	"Warning threshold (units)" :  payload1.warning_threshold_units__c,
+	"Produced units" :  payload1.produced_units__c,
+	"Service/ Printer Provider" : payload1.serviceprinter_provider__c,
+	"Estimated warehouse delivery date":  payload1.estimated_warehouse_delivery_date__c,
+})
+else
+payload.reqPayload map (payload1, index) -> {
+	"Country" : payload.name__v[0],
+	"Product" : if( sizeOf(payload1.document_product__vr.data.name__v ) != 0 ) payload1.document_product__vr.data.name__v joinBy "|" else null,
+	"Molecule" : if( (payload1.document_molecule__cr.data.name__v) != null ) payload1.document_molecule__cr.data.name__v joinBy "|" else ( if(payload1.document_product__vr.data."molecule__cr.name__v" != null )payload1.document_product__vr.data."molecule__cr.name__v" joinBy "|" else null),
+	"RO/RG Number" : if( payload1.document_ro_number__cr.data.name__v != null ) payload1.document_ro_number__cr.data.name__v joinBy "|" else (if (payload1.document_molecule__cr.data."ro_number__cr.name__v" != null) payload1.document_molecule__cr.data."ro_number__cr.name__v" joinBy "|" else (if(payload1.document_product__vr.data."ro_number__cr.name__v" != null) payload1.document_product__vr.data."ro_number__cr.name__v" joinBy "|"  else null)),
+	"Indication" : if(payload1.document_indication__cr.data.name__v != null )(if( sizeOf(payload1.document_indication__cr.data.name__v)> 0 ) (payload1.document_indication__cr.data.name__v joinBy "|") else null) else null,
+	"Scientific Area" :  if(payload1.document_scientific_area__cr.data.name__v != null ) (if( sizeOf(payload1.document_scientific_area__cr.data.name__v ) != 0 ) payload1.document_scientific_area__cr.data.name__v joinBy "|" else null) else null,
+	"Name" : replaceValue(payload1.name__v ),
+	"Document Number" : payload1.document_number__v,
+	"Version Number" : if(payload1.major_version_number__v != null and payload1.minor_version_number__v != null ) payload1.major_version_number__v ++ "." ++ payload1.minor_version_number__v else null,
+	"Material Intent" :if(payload1.material_intent__c != null ) (if( sizeOf( payload1.material_intent__c) != 0 )  payload1.material_intent__c joinBy "|" else null) else null,
+	"Category" : if(payload1.material_category__c != null )(if( sizeOf(payload1.material_category__c) != 0 ) payload1.material_category__c joinBy "|" else null) else null,
+	"Status" : payload1.status__v,
+	"Description" : replaceValue(payload1.title__v) ,
+	"Approved for distribution date" : payload1.approved_for_distribution_date__c,
+	"Expiration date" : payload1.expiration_date__c,
+	"Print Collateral" : payload1.print_collateral__c,
+	"Legacy System ID" : replaceValue(payload1.legacy_system_id1__c),
+	"Reps Positive list" : payload1.reps_positive_liste__c,
+	"Reps Positive list category" : nullSizeJoin(payload1.liste_positive_categorie__c),
+	"Team" :  nullSizeJoin(payload1.team__c),
+	"Warehouse Storage" : nullSizeJoin(payload1.warehouse_storage__c),
+	"Units per pack" :  payload1.units_per_pack__c,
+	"Minimal order (units)" :  payload1.minimal_order_units__c,
+	"Maximum order (units)" :  payload1.maximum_order_units__c,
+	"Price per unit" : payload1.price_per_unit__c,
+	"Warning flag" :  payload1.warning_flag__c,
+	"Warning threshold (units)" :  payload1.warning_threshold_units__c,
+	"Produced units" :  payload1.produced_units__c,
+	"Service/ Printer Provider" : payload1.serviceprinter_provider__c,
+	"Estimated warehouse delivery date":  payload1.estimated_warehouse_delivery_date__c,
+}
+
+]]></ee:set-payload>
+				
+</ee:message>
+				<ee:variables >
+					<ee:set-variable variableName="countryCode" ><![CDATA[payload[0].abbreviation__c]]></ee:set-variable>
+					<ee:set-variable variableName="count" ><![CDATA[vars.count + 1]]></ee:set-variable>
+					<ee:set-variable variableName="ForEachCountryCode" ><![CDATA[%dw 2.0
+output application/json
+---
+payload[0].abbreviation__c]]></ee:set-variable>
+				
+</ee:variables>
+			</ee:transform>
+			<json-logger:logger doc:name="Payload after mapping " doc:id="d89d5268-65eb-4f3e-a7d6-6ae47cc8c8c9" config-ref="JsonLoggerConfig" priority="DEBUG" message='#["Payload after mapping"]' tracePoint="AFTER_TRANSFORM"/>
+			<ee:transform doc:name="Convert json to csv file" doc:id="1efaf44c-9edd-4d58-9481-bfcf1a9fb17d" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/csv headerLineNumber = 0 , header = true , quoteHeader = true , quoteValues = true
+---
+payload]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<choice doc:name="Check Country Code" doc:id="6d306747-6db5-402f-b0d4-2bc51767a136" >
+				<when expression='#[vars.countryCode != null and (contains (vars.validCountryCode,vars.countryCode))]'>
+				<try doc:name="Try" doc:id="db7367aa-a4fc-44e5-9eb3-57316113b4b1" >
+						<json-logger:logger doc:name="Records in country" doc:id="4a0c4bc3-5e49-4424-b714-c88244ac2bca" config-ref="JsonLoggerConfig" message='#["No of records :"]'>
+							<json-logger:content ><![CDATA[#[%dw 2.0
+output application/json
+---
+"No of Records for : " ++ vars.countryCode ++ " is " ++ sizeOf(payload)]]]></json-logger:content>
+						</json-logger:logger>
+						<until-successful maxRetries="${sftp.write.retries.max}" doc:name="Until Successful" doc:id="bc126dc4-19da-4fd7-9260-996ca3f54ead" millisBetweenRetries="${sftp.write.retries.frequency}">
+							<sftp:write doc:name="Write file in B2B System" doc:id="d63e59fc-745f-4bcb-9f53-33e1a46f5b68" path='#[p("file.path.base") ++ "/"++ vars.countryCode default "other" ++ "/"++ vars.countryCode ++ "_Promomats-Warehouse-feed.csv"]' config-ref="SFTP_Config" />
+						</until-successful>
+						<ee:transform doc:name="Success Count" doc:id="760576e2-a00c-45f1-909d-09f5fba3c6fa">
+							<ee:message>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="success"><![CDATA[vars.success + 1]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+						<json-logger:logger doc:name="Success Response" doc:id="42923ce8-fd51-4793-95bd-81813b679310" config-ref="JsonLoggerConfig" tracePoint="END" message="Records have been successfully created  in B2B System"/>
+						<error-handler>
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="34c56876-845d-4390-b4dc-0fcc61f33b5d" type="ANY">
+								<ee:transform doc:name="For Each Error" doc:id="2278262a-6d8c-4318-96b1-1c77e2c4c858" >
+									<ee:message >
+									</ee:message>
+									<ee:variables >
+										<ee:set-variable variableName="description" ><![CDATA[error.description]]></ee:set-variable>
+										<ee:set-variable variableName="errorType" ><![CDATA[error.errorType]]></ee:set-variable>
+										<ee:set-variable variableName="Message" ><![CDATA[error.errorMessage]]></ee:set-variable>
+										<ee:set-variable variableName="forEachError" ><![CDATA[%dw 2.0
+var errorPayload = [{
+	errorType : error.errorType,
+	errorMessage : error.errorMessage,
+	description : error.description
+}]
+output application/json
+---
+vars.forEachError default [] ++ errorPayload
+
+]]></ee:set-variable>
+										<ee:set-variable variableName="errorCountry" ><![CDATA[%dw 2.0
+output application/json
+---
+vars.errorCountry ++ [vars.ForEachCountryCode]]]></ee:set-variable>
+									
+</ee:variables>
+								</ee:transform>
+								<ee:transform doc:name="Failure Variable" doc:id="1e5ef59a-ff6d-47c0-b202-2239949f67c7" >
+									<ee:message >
+									</ee:message>
+									<ee:variables >
+										<ee:set-variable variableName="failure" ><![CDATA[vars.failure + 1]]></ee:set-variable>
+									</ee:variables>
+								</ee:transform>
+				
+</on-error-continue>
+			</error-handler>
+		</try>
+				
+</when>
+			</choice>
+		</foreach>
+		<choice doc:name="Success check" doc:id="61f08f1c-9dfc-46b0-86a9-32d28d154029" >
+			<when expression="#[vars.failure == 0]">
+				<ee:transform doc:name="Success Response" doc:id="71859844-3cb5-4180-b2f6-271ff160adf0" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+   "responseStatus": "SUCCESS",
+   "message": "Records are created successfully"
+}]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[201]]></ee:set-variable>
+						<ee:set-variable variableName="correlationId" ><![CDATA[%dw 2.0
+output application/java
+---
+correlationId]]></ee:set-variable>
+					
+</ee:variables>
+				</ee:transform>
+				
+			
+</when>
+			<otherwise >
+			
+				<set-payload value="#[%dw 2.0
+output text/plain
+---
+&quot;&lt;html&gt;&lt;head&gt;&lt;style&gt;&quot; ++ p(&quot;notifications.tableCss&quot;) ++ &quot;&lt;/style&gt;&lt;/head&gt;&quot; ++
+&quot;&lt;body&gt;&quot; ++
+&quot;&lt;h2&gt;This is an automated notification email generated by Mulesoft.  Please do not reply to this message.&lt;/h2&gt;&quot; ++
+&quot;&lt;p&gt;Entity: &quot; ++ app.name ++ &quot;&lt;/p&gt;&quot; ++
+&quot;&lt;p&gt;Source System: &quot; ++ p('notifications.body.sourceSystem') ++ &quot;&lt;/p&gt;&quot; ++
+&quot;&lt;p&gt;Target System: &quot; ++  p('notifications.body.targetSystem') ++ &quot;&lt;/p&gt;&quot; ++
+&quot;&lt;p&gt;Timestamp: &quot; ++ now() ++ &quot;&lt;/p&gt;&lt;hr&gt;&quot; ++
+&quot;&lt;h4&gt;Error Details: &lt;/h4&gt; &lt;table border=1&gt;&lt;tr&gt;&quot; ++ 
+&quot;&lt;th&gt;Error Message&lt;/th&gt;&quot; ++ 
+&quot;&lt;th&gt;Unable to connect to IBM B2B System&lt;/th&gt;&lt;/tr&gt;&quot; 
+++ &quot;&lt;tr&gt;&quot; ++
+&quot;&lt;td&gt;Error Description &lt;/td&gt;&quot; ++ 
+&quot;&lt;td&gt;&quot; ++ write(vars.forEachError.description,'application/json') ++ &quot; &lt;/td&gt;&quot; ++ 
+&quot;&lt;/tr&gt;&quot;
+++ &quot;&lt;tr&gt;&quot; ++
+&quot;&lt;td&gt;Error Type &lt;/td&gt;&quot; ++ 
+&quot;&lt;td&gt;&quot; ++ write(vars.forEachError.errorType,'application/json') ++ &quot; &lt;/td&gt;&quot; ++ 
+&quot;&lt;/tr&gt;&quot;
+++ &quot;&lt;tr&gt;&quot; ++
+&quot;&lt;td&gt;Detailed Description &lt;/td&gt;&quot; ++ 
+&quot;&lt;td&gt; Error occurred while processing records for following country :&quot; ++ write( vars.errorCountry default &quot;&quot;,'application/json') ++ &quot; &lt;/td&gt;&quot; ++ 
+&quot;&lt;/tr&gt;&quot;
+++ &quot;&lt;/table&gt;&quot;  ++
+&quot;&lt;p&gt;Please check logs &lt;a href='&quot; ++ p(&quot;notifications.body.logUrl&quot;) ++ &quot;'&gt;here&lt;/a&gt; for more details.&lt;/p&gt;&quot; ++
+&quot;&lt;p&gt;If you cannot open the above link, copy paste the following to access logs &quot; ++ p(&quot;notifications.body.logUrl&quot;) ++ &quot;&lt;/p&gt;&quot; ++
+&quot;&lt;/body&gt;&lt;/html&gt;&quot;]" doc:name="Set Payload" doc:id="d49cd4e2-9a66-4c73-9ec2-7d0f9eee6ba7" />
+				<ee:transform doc:name="Request body of notification svc" doc:id="d28c8b54-3275-4ea6-87ec-8b36907fe5b7">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import * from dw::core::Binaries
+output application/json
+---
+{
+  id: correlationId as String default app.name ++ now(),
+  source: app.name,
+  "severity": "Warning",
+  "subject": "Error in application",
+  "timestamp": now(),
+  "targets": {
+    "email": {
+      "to": [p('notifications.emailTo')],
+      "subject": "Failed to connect to IBM B2B System",
+      "replyTo": [p('notifications.replyTo')],
+      "cc": [p('notifications.cc')],
+      "bcc": [p('notifications.bcc')],
+      "bodyType": "text/html",
+      body: toBase64(payload)
+    }
+  }
+}
+
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<try doc:name="Try" doc:id="95c92cdf-d809-4920-8690-9134625643a5">
+					<http:request method="POST" doc:name="Notification svc call to push notification" doc:id="fbe0ebbb-5a3c-45a5-acdc-d5261090102c" config-ref="notification-http-request-config" path="${notifications.path}" responseTimeout="${http.timeouts.response}">
+						<http:response-validator >
+							<http:success-status-code-validator values="200..599" />
+						</http:response-validator>
+					</http:request>
+					<json-logger:logger doc:name="Notification Response" doc:id="8183fc76-fd22-4d0a-abb6-7c2e0a865dd6" config-ref="JsonLoggerConfig" message="Notification sevice has been called" />
+					<ee:transform doc:name="Response Payload Message" doc:id="5092b7bb-66b5-43bd-a0b7-c6735b225ced">
+										<ee:message>
+											<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"responseStatus":"Failed",
+	"message":"Failed to publish information"
+}]]></ee:set-payload>
+										</ee:message>
+										<ee:variables>
+											<ee:set-variable variableName="httpStatus"><![CDATA[vars.errorCode]]></ee:set-variable>
+										</ee:variables>
+									</ee:transform>
+									<json-logger:logger doc:name="Error Email Sent" doc:id="e29ff0e0-322d-47a9-a0cd-94cf8f08cb37" config-ref="JsonLoggerConfig" tracePoint="END" message="Error Email Sent" />
+									<error-handler>
+							<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="b0b6419d-bd32-4934-8d65-bdb2584152b9" type="ANY">
+								<ee:transform doc:name="Error response of notification svc" doc:id="e23e7800-c76d-488b-934e-0848977f9064">
+						<ee:message>
+							<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"responseStatus": "Failed",
+	"message": "Failed to push notification by notification service"
+}]]></ee:set-payload>
+						</ee:message>
+									<ee:variables>
+										<ee:set-variable variableName="httpStatus"><![CDATA[error.muleMessage.attributes.StatusCode]]></ee:set-variable>
+									</ee:variables>
+					</ee:transform>
+								<json-logger:logger doc:name="Notification service logger" doc:id="a8e51cc5-ce0b-4277-87fd-dc1e25781738" message="Error occured in Notification service " config-ref="JsonLoggerConfig" />
+							</on-error-continue>
+						</error-handler>
+					</try>
+				<ee:transform doc:name="Failure Response" doc:id="d1690fe6-fc9d-4e87-b32d-547c8a0fb258" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+   "responseStatus": "FAILURE",
+   "errors": [
+       {
+           "type": "Bad Request",
+           "message": "Unable to create the records in B2B System"
+       }
+   ]
+}
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables >
+						<ee:set-variable variableName="httpStatus" ><![CDATA[404]]></ee:set-variable>
+						<ee:set-variable variableName="correlationId" ><![CDATA[%dw 2.0
+output application/java
+---
+correlationId]]></ee:set-variable>
+					
+</ee:variables>
+				</ee:transform>
+				
+				
+			
+
+</otherwise>
+		</choice>
+	</flow> 
+</mule>
